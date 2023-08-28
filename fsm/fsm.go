@@ -1,22 +1,23 @@
 package fsm
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
-	"sync"
+
+	contract "raftClient/contract"
+	"raftClient/database"
 
 	"github.com/hashicorp/raft"
 )
 
 type Fsm struct {
-	DataBase database
+	DataBase *database.Database
 }
 
 func NewFsm() *Fsm {
 	fsm := &Fsm{
-		DataBase: NewDatabase(),
+		DataBase: database.NewDatabase(),
 	}
 	return fsm
 }
@@ -24,59 +25,36 @@ func NewFsm() *Fsm {
 // TODO:需要实现注册所有会改变数据库状态的操作(比如说,写操作都需要实现注册,而读操作不需要)  这里可以引入数字签名验证功能
 func (f *Fsm) Apply(l *raft.Log) interface{} {
 	fmt.Println("apply data:", string(l.Data))
-	data := strings.Split(string(l.Data), ",")
+	data := strings.Split(string(l.Data), "-")
 	op := data[0]
-	if op == "set" {
+
+	switch op {
+	case "set": // 单纯的数据库写操作
 		key := data[1]
 		value := data[2]
 		f.DataBase.Set(key, value)
+
+	case "tx": // 接收到的是交易,需要根据合约进行执行
+		contractName := data[1]
+		functionName := data[2]
+		argsStr := data[3]
+
+		args := strings.Split(argsStr, " ")
+
+		if res, err := contract.ContractFuncRun(f.DataBase, contractName, functionName, args); err != nil {
+			return err
+		} else {
+			return res
+		}
 	}
 
 	return nil
 }
 
 func (f *Fsm) Snapshot() (raft.FSMSnapshot, error) {
-	return &f.DataBase, nil
+	return f.DataBase, nil
 }
 
 func (f *Fsm) Restore(io.ReadCloser) error {
 	return nil
 }
-
-type database struct {
-	Data map[string]string
-	mu   sync.Mutex
-}
-
-func NewDatabase() database {
-	return database{
-		Data: make(map[string]string),
-	}
-}
-
-func (d *database) Get(key string) string {
-	d.mu.Lock()
-	value := d.Data[key]
-	d.mu.Unlock()
-	return value
-}
-
-func (d *database) Set(key, value string) {
-	d.mu.Lock()
-	d.Data[key] = value
-	d.mu.Unlock()
-}
-
-func (d *database) Persist(sink raft.SnapshotSink) error {
-	d.mu.Lock()
-	data, err := json.Marshal(d.Data)
-	d.mu.Unlock()
-	if err != nil {
-		return err
-	}
-	sink.Write(data)
-	sink.Close()
-	return nil
-}
-
-func (d *database) Release() {}

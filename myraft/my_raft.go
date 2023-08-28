@@ -2,12 +2,12 @@ package myraft
 
 import (
 	"net"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	fsm "github.com/vision9527/raft-demo/fsm"
+	"raftClient/fsm"
+	loglogrus "raftClient/log_logrus"
 
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
@@ -15,6 +15,8 @@ import (
 
 func NewMyRaft(raftAddr, raftId, raftDir string) (*raft.Raft, *fsm.Fsm, error) {
 	config := raft.DefaultConfig()
+	config.LogOutput = loglogrus.Log.Out
+	config.LogLevel = "DEBUG"
 	config.LocalID = raft.ServerID(raftId)
 	// config.HeartbeatTimeout = 1000 * time.Millisecond
 	// config.ElectionTimeout = 1000 * time.Millisecond
@@ -24,11 +26,11 @@ func NewMyRaft(raftAddr, raftId, raftDir string) (*raft.Raft, *fsm.Fsm, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	transport, err := raft.NewTCPTransport(raftAddr, addr, 2, 5*time.Second, os.Stderr) // 节点之间采用流式TCP。maxPool是指其余raft节点的个数,timeout应该是tcp超时时间,logOutput指定日志输出目标
+	transport, err := raft.NewTCPTransport(raftAddr, addr, 2, 5*time.Second, loglogrus.Log.Out) // 节点之间采用流式TCP。maxPool是指其余raft节点的个数,timeout应该是tcp超时时间,logOutput指定日志输出目标
 	if err != nil {
 		return nil, nil, err
 	}
-	snapshots, err := raft.NewFileSnapshotStore(raftDir, 2, os.Stderr) // retain指定当前节点会维持的快照的数目(至少为1)
+	snapshots, err := raft.NewFileSnapshotStore(raftDir, 2, loglogrus.Log.Out) // retain指定当前节点会维持的快照的数目(至少为1)
 	if err != nil {
 		return nil, nil, err
 	}

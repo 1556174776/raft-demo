@@ -1,3 +1,4 @@
 .vscode/
 node*/
-raft-demo
+raft.exe
+log/
