@@ -21,6 +21,7 @@ func NewFsm() *Fsm {
 	return fsm
 }
 
+// TODO:需要实现注册所有会改变数据库状态的操作(比如说,写操作都需要实现注册,而读操作不需要)  这里可以引入数字签名验证功能
 func (f *Fsm) Apply(l *raft.Log) interface{} {
 	fmt.Println("apply data:", string(l.Data))
 	data := strings.Split(string(l.Data), ",")
