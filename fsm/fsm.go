@@ -7,6 +7,7 @@ import (
 
 	contract "raftClient/contract"
 	"raftClient/database"
+	loglogrus "raftClient/log_logrus"
 
 	"github.com/hashicorp/raft"
 )
@@ -42,6 +43,7 @@ func (f *Fsm) Apply(l *raft.Log) interface{} {
 		args := strings.Split(argsStr, " ")
 
 		if res, err := contract.ContractFuncRun(f.DataBase, contractName, functionName, args); err != nil {
+			loglogrus.Log.Warnf("[FSM] 合约执行错误,err:%v\n", err)
 			return err
 		} else {
 			return res

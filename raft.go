@@ -4,6 +4,7 @@ import (
 	"flag"
 	"net/http"
 	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -13,15 +14,20 @@ import (
 )
 
 var (
-	httpAddr    string
-	raftAddr    string
-	raftId      string
-	raftCluster string
-	raftDir     string
+	httpAddr           string
+	raftAddr           string
+	http_raft_addr_map string
+	raftId             string
+	raftCluster        string
+	raftDir            string
 )
 
 var (
 	isLeader int64
+)
+
+var (
+	addrMap = make(map[string]string) // 映射raft节点的http_addr和raft_addr
 )
 
 func init() {
@@ -29,6 +35,20 @@ func init() {
 	flag.StringVar(&raftAddr, "raft_addr", "127.0.0.1:7000", "raft listen addr")                                       // 设置当前节点的raft节点间通信端口
 	flag.StringVar(&raftId, "raft_id", "1", "raft id")                                                                 // 设置当前节点的raft节点编号
 	flag.StringVar(&raftCluster, "raft_cluster", "1/127.0.0.1:7000,2/127.0.0.1:8000,3/127.0.0.1:9000", "cluster info") // 设置其余节点的 编号+raft通信端口
+	flag.StringVar(&http_raft_addr_map, "http_raft_addr_map", "127.0.0.1:7001/127.0.0.1:7000,127.0.0.1:8001/127.0.0.1:8000,127.0.0.1:9001/127.0.0.1:9000", "httpAddr map raftAddr")
+
+	peerMaps := strings.Split(http_raft_addr_map, ",")
+	if len(peerMaps) == 0 {
+		return
+	}
+	for _, peerMap := range peerMaps { // 完成所有节点http地址和raft地址的映射
+		peer := strings.Split(peerMap, "/")
+		httpAddr := peer[0]
+		raftAddr := peer[1]
+
+		addrMap[raftAddr] = httpAddr
+	}
+
 }
 
 func main() {
@@ -66,7 +86,7 @@ func main() {
 
 	// 启动http server
 
-	httpServer := api.InitRouter(myRaft, fm)
+	httpServer := api.InitRouter(myRaft, fm, addrMap)
 
 	s := &http.Server{
 		Addr:           httpAddr,

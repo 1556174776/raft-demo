@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -18,11 +19,31 @@ type Client struct {
 	NodeURL []string // 所有节点的http url
 }
 
+type RaftHttpResponse struct {
+	Code int    `json:"code"`
+	Data string `json:"data"`
+	Msg  string `json:"msg"`
+}
+
 func NewClient(nodeID string, nodeURL []string) *Client {
 	return &Client{
 		NodeID:  nodeID,
 		NodeURL: nodeURL,
 	}
+}
+
+func (c *Client) GetLeaderHttp() string {
+
+	rand.Seed(time.Now().UnixNano())
+	index := rand.Intn(len(c.NodeURL))
+
+	resMsg := sendHttpGet(c.NodeURL[index] + "/leader")
+
+	raftRes := &RaftHttpResponse{}
+
+	json.Unmarshal([]byte(resMsg), raftRes)
+
+	return raftRes.Data
 }
 
 func (c *Client) CommonWrite(args []string) string {
@@ -45,12 +66,10 @@ func (c *Client) CommonWrite(args []string) string {
 
 	writer.Close()
 
-	// 随机找一个节点发送
-	rand.Seed(time.Now().UnixNano())
-	index := rand.Intn(len(c.NodeURL))
+	leaderHttp := c.GetLeaderHttp()
 
-	// TODO:或者只向主节点发送(需要先请求一次)
-	return sendHttpPost(c.NodeURL[index], buf, writer)
+	// return sendHttpPost(leaderHttp+"/newTx", buf, writer)
+	return sendHttpPost(leaderHttp+"/newTx_highTPS", buf, writer) // 对于写操作,当前接口大约要比上面的/newTx接口的TPS高一倍
 }
 
 func (c *Client) CommonRead(args []string) string {
@@ -73,12 +92,11 @@ func (c *Client) CommonRead(args []string) string {
 
 	writer.Close()
 
-	// 随机找一个节点发送
+	// 设计读取的交易随机找一个raft节点即可
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(len(c.NodeURL))
+	return sendHttpPost(c.NodeURL[index]+"/newTx", buf, writer)
 
-	// TODO:或者只向主节点发送(需要先请求一次)
-	return sendHttpPost(c.NodeURL[index], buf, writer)
 }
 
 func sendHttpPost(dperurl string, buf bytes.Buffer, writer *multipart.Writer) string {
@@ -108,5 +126,33 @@ func sendHttpPost(dperurl string, buf bytes.Buffer, writer *multipart.Writer) st
 	}
 
 	// 返回响应内容
+	return string(body)
+}
+
+func sendHttpGet(dperurl string) string {
+	var buf bytes.Buffer
+	// 创建一个http请求
+	req, err := http.NewRequest("GET", dperurl, &buf)
+	if err != nil {
+		panic(err)
+	}
+
+	// 发送请求
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	// 读取响应内容
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println(err)
+		return ""
+	}
+
+	// 打印响应内容
+	//fmt.Printf("now: %s ---- %s\n", time.Now().Format("2006-01-02 15:04:05"), string(body))
 	return string(body)
 }
